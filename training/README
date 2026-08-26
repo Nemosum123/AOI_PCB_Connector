@@ -1,0 +1,87 @@
+# Training Pipeline
+
+This project trains on Kaggle notebooks (free GPU), pulling data from
+Roboflow. `v6_multicolor_finetune.py` is the current pipeline — a fine-tune
+from the previously deployed checkpoint on a combined black + white
+connector dataset, rather than a from-scratch training run.
+
+## Prerequisites
+
+1. **Roboflow API key in Kaggle Secrets, never hardcoded.** Add it under
+   Kaggle → Add-ons → Secrets, named `sohamblulabel` (or update the name in
+   the script). An API key was accidentally exposed in plaintext earlier in
+   this project's history — if that key was never rotated, do so in
+   Roboflow's dashboard before continuing.
+
+2. **Previous checkpoint uploaded as a Kaggle Model or Dataset.** Since
+   this is a fine-tune, not a from-scratch run, the previously deployed
+   `best.pt` needs to be reachable from the notebook. Kaggle can't see your
+   local filesystem — upload it via "Add Data" (Dataset) or Kaggle's
+   "Models" feature, then check the exact mounted path with:
+   ```python
+   import os
+   print(os.listdir("/kaggle/input"))
+   ```
+   Do not assume the path — verify it before pointing `PREVIOUS_BEST_PATH`
+   at it. As a sanity check before training, confirm the loaded checkpoint
+   actually has the right classes, not a fresh COCO-pretrained model:
+   ```python
+   YOLO(PREVIOUS_BEST_PATH).names  # should print {0: 'defective', 1: 'passing'}
+   ```
+
+3. **GPU accelerator: Tesla T4, not P100.** Recent PyTorch/CUDA builds
+   dropped support for compute capability sm_60 (Pascal, includes the P100).
+   T4 (Turing, sm_75) works with no code changes.
+
+## Color tagging — read before adapting this for a future dataset
+
+This pipeline distinguishes black vs. white connector images by filename
+pattern (`pass_NNNN` / `defect_NNNN` for white, everything else treated as
+black). **This is fragile and specific to how this particular batch was
+named.** If a future batch uses different naming, or Roboflow's export
+doesn't preserve filenames the way expected, the color tagging will
+silently produce wrong results — always print and manually verify the
+group counts in the color-tagging cell before trusting anything downstream
+of it. A perceptual-hashing fallback (matching against the original
+un-exported source images via `imagehash`) is the more robust approach if
+filename-based tagging isn't available for a new batch.
+
+## Known recurring bug patterns in this pipeline
+
+- **Stale variable/path references** when copying cells forward — e.g.
+  evaluating against the wrong run name or wrong dataset variable. Always
+  double-check both before running.
+- **Kaggle session restarts wipe pip installs and Python variables**, but
+  files already written to `/kaggle/working/` typically survive. After any
+  restart: re-run the setup cell, then rebuild config variables from the
+  saved YAML file on disk rather than assuming in-memory variables persist.
+- **Non-idempotent preprocessing cells** (not clearing their output
+  directory before rewriting) combined with a session restart caused a real
+  data leakage incident in an earlier iteration (the discarded "v3" run).
+  Always clear stale output directories, use `sorted()` file listings, and
+  run the automated leak-check gate before trusting any training run — it
+  must print "No leakage detected" before training is allowed to proceed.
+- **`GaussNoise`'s `var_limit` parameter was deprecated** in newer
+  Albumentations versions in favor of `std_range` — the noise scale differs,
+  so don't copy old `var_limit` values directly if upgrading the library.
+- **Albumentations returns class labels as floats internally** — cast to
+  `int()` explicitly before writing YOLO label files, or you'll get invalid
+  labels like `"1.0"` instead of `"1"`.
+
+## Fine-tuning vs. full retrain
+
+When adapting the model to new conditions (new fixture, new connector
+variant, etc.), decide explicitly whether the new condition **replaces**
+what came before or **adds** to it:
+
+- **Replaces** (e.g. a fixture that's fully retired) → fine-tune on new data
+  alone is reasonable; old-geometry data no longer represents production.
+- **Adds** (e.g. white connectors that now coexist with black ones in
+  production) → combine new data with existing data and fine-tune on the
+  union. Fine-tuning on new data alone risks catastrophic forgetting of
+  what the model already handled well.
+
+Always evaluate the result broken out by whatever dimension changed (e.g.
+per-color, per-fixture), not just an overall blended metric — an overall
+number can look healthy while hiding a regression in exactly the group you
+weren't focused on.
