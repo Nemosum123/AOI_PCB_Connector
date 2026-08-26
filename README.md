@@ -66,7 +66,7 @@ bluarmor-aoi/
 │   ├── OUTSTANDING_ITEMS.md           # prioritized next steps
 │   └── AOI_Final_Report.pdf           # full original project report (iterations 1-3 + deployment)
 └── logs/                              # inspection_log.csv and flagged_images/ live here at runtime
-                                        # (not committed — see .gitignore)
+|__ jupyter_notebook                                       
 ```
 
 **Model weights (`.pt`, NCNN exports) are intentionally not committed to this
