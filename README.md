@@ -70,11 +70,6 @@ bluarmor-aoi/
 |__ results                            # graphs, labels and data found after getting results                                      
 ```
 
-**Model weights (`.pt`, NCNN exports) are intentionally not committed to this
-repo.** They're large binaries that don't belong in plain git history — distribute
-them via GitHub Releases, Kaggle Output artifacts, or shared storage, and drop
-the exported model into `deployment/models/` locally on each device.
-
 ## Model History
 
 | Version | Classes | Key change | Test mAP50 | Notes |
