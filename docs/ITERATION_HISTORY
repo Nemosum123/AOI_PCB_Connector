@@ -1,0 +1,130 @@
+# Model Iteration History
+
+Full narrative detail (code cells, environment notes, confusion matrices)
+for iterations 1-3 and the initial deployment is in
+[`AOI_Final_Report.pdf`](AOI_Final_Report.pdf). This file summarizes that
+history plus the two rounds of work that came after the original report.
+
+## Iteration 1 (superseded)
+
+- Roboflow `bluarmor-od-wd3wq` v1. Single class `connector`; only defects
+  boxed, passing images left as implicit background.
+- Test: mAP50 0.9950, mAP50-95 0.6560, P 0.9971, R 1.0.
+- **Flagged, unresolved at the time:** `fliplr=0.5` default left enabled
+  despite the connector being physically polarized/asymmetric.
+
+## Iteration 2 (superseded)
+
+- Roboflow v2 — switched to two explicit classes: `defective` and `passing`.
+- GPU issue: Tesla P100 failed (PyTorch/CUDA 12.8 dropped `sm_60` support).
+  Fixed by switching to Tesla T4 (`sm_75`).
+- Security fix: Roboflow API key moved from hardcoded plaintext to Kaggle
+  Secrets, after an earlier plaintext exposure.
+- Test: mAP50 0.9949, mAP50-95 0.5930, P 0.9964, R 0.9952. Per-class AP50:
+  defective 0.9950, passing 0.9948.
+- Validation split was severely skewed (13% defective) — flagged for the
+  next iteration. `fliplr` issue still unresolved.
+
+## Iteration 3 / "v4" (final pre-deployment iteration)
+
+An intermediate run internally called "v3" was **discarded** due to a data
+leakage bug — a Kaggle session restart caused a preprocessing cell to not
+clear its output directory, mixing stale pre-restart files with a
+different post-restart split assignment. Caught via an automated
+source-image overlap check; the leaked run showed 128/136/36 overlapping
+images across split pairs and implausibly high metrics (test mAP50-95 of
+0.775). The fix: explicit `shutil.rmtree` before every preprocessing run,
+`sorted()` file listings for determinism, and a hard leak-check gate before
+every training run going forward.
+
+- **Class imbalance fix:** undersampled `passing` (558→376) to match
+  `defective`, balanced pool of 752, stratified 70/15/15 split.
+- **2x zoom-crop preprocessing:** center-crop to 50% width/height, boxes
+  recalculated, never upscaled (an early attempt upscaled and caused
+  visible blur — corrected to crop-then-downsize-only, using `INTER_AREA`).
+- **3x offline augmentation** (train split only): rotation, brightness/
+  contrast/hue jitter, mild noise/blur, explicitly no flips. Fixed two
+  Albumentations bugs along the way: deprecated `var_limit` → `std_range`,
+  and float class labels written to label files → explicit `int()` cast.
+- `fliplr=0.0` finally applied, closing the loop from Iteration 1.
+- **Test metrics:** mAP50 0.9738, mAP50-95 0.6120, P 0.9647, R 0.9641.
+  Per-class AP50: defective 0.9940, **passing 0.9536** — a notable dip from
+  Iteration 2's 0.9948, attributed to the 182 excluded passing images from
+  the undersampling trade-off. Flagged explicitly as "a caveat to monitor,
+  not a blocker."
+
+## Deployment (Phase 6)
+
+- Raspberry Pi 5, 4GB RAM, dual native CSI cameras (no multiplexer needed
+  — Pi 5 supports two simultaneous CSI streams natively, unlike originally
+  scoped).
+- NCNN export for ARM CPU inference. CPU-only PyTorch required explicitly
+  (default aarch64 pip resolution can grab a CUDA/Jetson build).
+- `torchvision` installed from a different index than `torch` caused
+  `operator torchvision::nms does not exist` — fixed by reinstalling both
+  from the same official PyTorch CPU wheel index.
+- Script originally named `inspect.py` collided with Python's standard
+  library `inspect` module — renamed to `run_inspection.py`.
+- Custom camera resolution + immediate `autofocus_cycle()` triggered a
+  kernel-level RP1 driver fault. Fixed by reverting to default camera
+  config, doing all resolution reduction in software, and adding a 2s
+  settle delay before autofocus.
+- Single-camera, user-selectable architecture (not simultaneous dual-camera)
+  — deliberate simplification for the single-station PoC.
+- **Live validation (~20-25 boards):** large majority correct.
+  `FLAG_FOR_REVIEW` confirmed working. **1-2 known-defective boards
+  returned a PASSING verdict** — a false negative, consistent with the
+  passing-class AP50 softening flagged in v4. No image was saved for this
+  case (the logic only saves non-PASS results) — the CSV row is the only
+  record.
+
+## Elevated fixture (no retrain performed)
+
+The physical rig was elevated, changing camera-to-connector working
+distance. Before committing to a fine-tune, the existing v4 checkpoint was
+stress-tested live against the new fixture rather than assumed to need
+retraining. It held up across a reasonably sized known-board set including
+boards similar to the earlier false-negative case, so **no retraining was
+performed** — collecting and annotating new data for a problem that wasn't
+actually present would have been wasted effort.
+
+## v6 — Multi-color fine-tune (current)
+
+Live testing on the elevated fixture surfaced a new issue: white connectors
+were not reliably detected, distinct from the black-connector dataset the
+model was trained on. A low-confidence-threshold diagnostic confirmed
+partial signal (not zero), with the **passing class again being the
+fragile one** — mirroring the exact failure pattern already known from v4.
+
+Since both black and white connectors persist in production (mixed
+batches/suppliers), this was treated as an **additive** fine-tune, not a
+replacement:
+
+- 100 images each of white-passing and white-defective collected,
+  annotated, and combined with the existing black-connector dataset in a
+  new Roboflow version — deliberately not white-only, to avoid
+  catastrophic forgetting of black-connector performance.
+- 70/20/10 split, stratified by **class and color jointly** (four groups),
+  given how little white data existed relative to black.
+- Fine-tuned from the v4 checkpoint (not from scratch): 40 epochs,
+  `lr0=0.002`, `fliplr=0.0`, same zoom-crop and augmentation policy as v4.
+- **A color-tagging bug during evaluation** (filename heuristic didn't
+  match the actual `pass_NNNN`/`defect_NNNN` naming used for the white
+  batch) caused the white-only test subset to show 0 images initially.
+  This only affected the evaluation split-out, not training — the class
+  labels were correct throughout, so no retraining was needed once the
+  heuristic was fixed.
+- **Result:** no regression on black connectors, white brought up to
+  comparable performance:
+
+  | Group | Defective AP50 | Passing AP50 |
+  |---|---|---|
+  | Black | 0.9850 | 0.9950 |
+  | White | 0.9950 | 0.9950 |
+
+  Overall: mAP50 0.9900, mAP50-95 0.7229.
+
+- **Not yet fully confirmed:** these are offline test-split numbers on a
+  small white sample (46 test images). The real gate is live validation
+  against real boards at the normal `CONF_THRESHOLD` — see
+  [`OUTSTANDING_ITEMS.md`](OUTSTANDING_ITEMS.md).
