@@ -1,0 +1,73 @@
+# Outstanding Items
+
+Roughly in priority order.
+
+## 1. Asymmetric confidence threshold (top priority)
+
+`CONF_THRESHOLD` in `deployment/inspection_core.py` currently applies
+symmetrically to both classes (0.4). A missed defect (false negative) is
+more costly than a false alarm, so `FAIL`/defective should trigger at a
+**lower** confidence bar than confirming `PASS`. This is a config/logic
+change to `run_inspection()`, not a retraining requirement, and should be
+validated against the same known-board set already in use — now covering
+both connector colors.
+
+## 2. `SAVE_ALL_IMAGES` during threshold tuning
+
+`inspection_core.py` has a `SAVE_ALL_IMAGES` flag, currently `False`. Flip
+it to `True` while tuning thresholds so every inspection — not just
+non-PASS results — leaves a visual record. This matters because the
+existing false-negative case(s) from live validation have no saved image;
+the only record is the CSV row. Revert to `False` once tuning is done to
+avoid unbounded storage growth.
+
+## 3. Live re-validation of the v6 multi-color fine-tune
+
+The v6 offline test metrics (per-color, per-class AP50) look strong, but
+this project has twice now had strong offline numbers hide a real problem
+(the v3 leakage incident, and v4's passing-class softening only surfacing
+as a live false negative). Before trusting v6 in production:
+
+- Re-run live validation with real boards of **both colors**, at the
+  **normal** `CONF_THRESHOLD` (not a lowered diagnostic value).
+- Apply a concrete, pre-committed decision rule (e.g. "no more than N false
+  PASSes on known-defective boards, no more than M false FLAGs on
+  known-passing boards") rather than judging the result after the fact.
+- If it doesn't clear that bar, that's a signal the ~75-100 images per
+  white class genuinely wasn't enough — not a reason to lower the
+  threshold again as a workaround.
+
+## 4. Collect more live-condition defective imagery
+
+Continue collecting images of defective boards under actual deployment
+camera/lighting conditions (not just original studio/training images) for
+a future retraining iteration, to close the gap between training
+conditions and live conditions.
+
+## 5. Recurring re-validation cadence
+
+Establish a fixed known-board test set (now covering both connector
+colors) and re-run it periodically, before trusting any future threshold
+or model change — not just once after each change.
+
+## 6. Storage retention policy
+
+`logs/flagged_images/` currently accumulates indefinitely with no cleanup
+policy. Decide a retention window or archival approach before this becomes
+a disk-space problem on the Pi.
+
+## 7. Interim operating posture
+
+Continue running with human spot-checking during the initial production
+trial. Do not treat the system as fully autonomous yet — specifically
+because of the outstanding false-negative risk (item 1) and the
+not-yet-live-validated multi-color fine-tune (item 3).
+
+## Notes for future fixture or connector-variant changes
+
+Before any future physical change (new fixture, new connector color/model,
+new lighting), decide explicitly whether the new condition **replaces**
+the old one or **coexists** with it — this determines whether to fine-tune
+on new data alone or combine it with existing data. See
+`training/README.md` for the reasoning and the recurring bug patterns to
+watch for either way.
