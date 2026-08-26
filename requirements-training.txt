@@ -1,0 +1,15 @@
+# Kaggle training environment dependencies.
+# Kaggle notebooks come with most of the scientific stack preinstalled;
+# these are the additions this project's pipeline needs on top of that.
+
+ultralytics
+roboflow
+albumentations
+opencv-python
+scikit-learn
+PyYAML
+
+# Only needed if reconciling a broken filename-based color tag against
+# original source images via perceptual hashing (see training/README.md).
+imagehash
+Pillow

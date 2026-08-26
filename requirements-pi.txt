@@ -1,0 +1,25 @@
+# Raspberry Pi deployment dependencies.
+#
+# IMPORTANT: install torch and torchvision FIRST, from the official CPU wheel
+# index, before installing anything else in this file. Default aarch64 pip
+# resolution can select a CUDA/Jetson-targeted build that wastes 500MB+ of
+# disk space and is incompatible with the Pi 5's GPU-less CPU:
+#
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#
+# Both torch and torchvision MUST come from the same index — installing them
+# from different sources (e.g. one from piwheels, one from the official
+# index) causes `RuntimeError: operator torchvision::nms does not exist`.
+
+ultralytics
+opencv-python
+numpy
+Pillow
+
+# picamera2 is NOT installed via pip — it depends on system-level libcamera
+# bindings installed via apt, which is why the venv must be created with
+# --system-site-packages. Do not add it here.
+
+# Pillow's Tk bindings (ImageTk, used by touchscreen_app.py) ship as a
+# separate apt package on Raspberry Pi OS, not via pip:
+#   sudo apt install -y python3-pil.imagetk

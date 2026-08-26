@@ -1,0 +1,51 @@
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# --- Virtual environments ---
+venv/
+.venv/
+aoi-env/
+
+# --- Model weights and exports ---
+# Large binaries don't belong in plain git history — distribute via GitHub
+# Releases, Kaggle Output, or shared storage, and place locally under
+# deployment/models/ on each device instead.
+*.pt
+*.onnx
+*.param
+*.bin
+best_ncnn_model/
+deployment/models/*
+!deployment/models/.gitkeep
+
+# --- Runtime logs and captured images ---
+# inspection_log.csv and flagged_images/ contain real production board
+# photos and inspection history — do not commit.
+logs/*
+!logs/.gitkeep
+*.csv
+flagged_images/
+
+# --- Kaggle / training artifacts ---
+runs/
+zoomed_dataset/
+resplit/
+test_*_only*/
+*.zip
+*.cache
+
+# --- Secrets ---
+# Roboflow/API keys must never be hardcoded or committed — use Kaggle
+# Secrets (training) or environment variables (deployment) instead.
+*.env
+secrets.json
+**/secret*.py
+
+# --- OS / editor ---
+.DS_Store
+.vscode/
+.idea/
+*.swp
