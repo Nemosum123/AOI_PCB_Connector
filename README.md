@@ -57,7 +57,7 @@ bluarmor-aoi/
 │   ├── preprocess.py                  # zoom_crop() — must match training-time transform exactly
 │   ├── inspection_core.py             # capture -> preprocess -> inference -> verdict -> logging
 │   ├── touchscreen_app.py             # Tkinter kiosk UI for the 7" touchscreen
-│   └── models/                        # NCNN-exported model goes here (not committed — see below)
+│   └── models/                        # model goes here(best.pt)
 ├── training/
 │   ├── README.md                      # how to run the Kaggle pipeline
 │   └── v6_multicolor_finetune.py      # current training pipeline (fine-tune, black+white connectors)
