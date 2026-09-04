@@ -183,4 +183,4 @@ prioritized list. Headline items:
 
 ## License
 
-All data used for this project belongs to BluArmor
+All data used for this project belongs to AptEner Mechatronics Private Limited (BluArmor)
